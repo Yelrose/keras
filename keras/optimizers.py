@@ -20,7 +20,7 @@ def clip_norm(g, c, n):
                 g_shape = copy.copy(then_expression.dense_shape)
             if condition.dtype != tf.bool:
                 condition = tf.cast(condition, 'bool')
-            g = K.tensorflow_backend._cond(condition,
+            g = tf.cond(condition,
                                            lambda: then_expression,
                                            lambda: else_expression)
             if hasattr(then_expression, 'get_shape'):
