@@ -4,10 +4,33 @@ from .utils.generic_utils import get_from_module
 from six.moves import zip
 
 
+
 def clip_norm(g, c, n):
     if c > 0:
-        g = K.switch(n >= c, g * c / n, g)
+        if K.backend() == 'tensorflow':
+            import tensorflow as tf
+            import copy
+            condition = n >= c
+            then_expression = tf.scalar_mul(c / n, g)
+            else_expression = g
+
+            if hasattr(then_expression, 'get_shape'):
+                g_shape = copy.copy(then_expression.get_shape())
+            elif hasattr(then_expression, 'dense_shape'):
+                g_shape = copy.copy(then_expression.dense_shape)
+            if condition.dtype != tf.bool:
+                condition = tf.cast(condition, 'bool')
+            g = K.tensorflow_backend._cond(condition,
+                                           lambda: then_expression,
+                                           lambda: else_expression)
+            if hasattr(then_expression, 'get_shape'):
+                g.set_shape(g_shape)
+            elif hasattr(then_expression, 'dense_shape'):
+                g._dense_shape = g_shape
+        else:
+            g = K.switch(n >= c, g * c / n, g)
     return g
+
 
 
 def optimizer_from_config(config, custom_objects={}):
