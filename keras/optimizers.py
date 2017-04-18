@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from . import backend as K
 from .utils.generic_utils import get_from_module
 from six.moves import zip
-
+import tensorflow as tf
 
 
 def clip_norm(g, c, n):
@@ -374,19 +374,34 @@ class Adam(Optimizer):
         self.weights = [self.iterations] + ms + vs
 
         for p, g, m, v in zip(params, grads, ms, vs):
-            m_t = (self.beta_1 * m) + (1. - self.beta_1) * g
-            v_t = (self.beta_2 * v) + (1. - self.beta_2) * K.square(g)
-            p_t = p - lr_t * m_t / (K.sqrt(v_t) + self.epsilon)
+            if isinstance(g, tf.IndexedSlices):
+                indices = g.indices
+                g_s = g.values
+                m_s = tf.gather(m, indices)
+                v_s = tf.gather(v, indices)
+                p_s = tf.gather(p, indices)
 
-            self.updates.append(K.update(m, m_t))
-            self.updates.append(K.update(v, v_t))
+                m_t = (self.beta_1 * m_s) + (1. - self.beta_1) * g_s
+                v_t = (self.beta_2 * v_s) + (1. - self.beta_2) * K.square(g_s)
+                p_t = p_s - lr_t * m_t / (K.sqrt(v_t) + self.epsilon)
 
-            new_p = p_t
-            # apply constraints
-            if p in constraints:
-                c = constraints[p]
-                new_p = c(new_p)
-            self.updates.append(K.update(p, new_p))
+                self.updates.append(tf.scatter_update(m, indices, m_t))
+                self.updates.append(tf.scatter_update(v, indices, v_t))
+                self.updates.append(tf.scatter_update(p, indices, p_t))
+            else:
+                m_t = (self.beta_1 * m) + (1. - self.beta_1) * g
+                v_t = (self.beta_2 * v) + (1. - self.beta_2) * K.square(g)
+                p_t = p - lr_t * m_t / (K.sqrt(v_t) + self.epsilon)
+
+                self.updates.append(K.update(m, m_t))
+                self.updates.append(K.update(v, v_t))
+
+                new_p = p_t
+                # apply constraints
+                if p in constraints:
+                    c = constraints[p]
+                    new_p = c(new_p)
+                self.updates.append(K.update(p, new_p))
         return self.updates
 
     def get_config(self):
